@@ -389,7 +389,6 @@
                 },
                 "sh_fitting": {
                     "type": "boolean",
-                    "default": true,
                     "description": "Compute a Spherical Harmonics fit on the DWI, and output the SH coefficients in a Nifti file.",
                     "help_text": "Compute a Spherical Harmonics fit on the DWI, and output the SH coefficients in a Nifti file."
                 },
@@ -772,6 +771,10 @@
                     "fa_icon": "fas fa-palette",
                     "hidden": true
                 },
+                "run_extended_qc": {
+                    "type": "boolean",
+                    "description": "This turns on all flags to run QC for modules where supported, thus creating a rich MultiQC report."
+                },
                 "multiqc_config": {
                     "type": "string",
                     "format": "file-path",
@@ -912,24 +915,6 @@
         },
         {
             "$ref": "#/$defs/generic_options"
-        },
-        {
-            "$ref": "#/$defs/dwi_preprocessing_options"
-        },
-        {
-            "$ref": "#/$defs/t1_preprocessing_options"
-        },
-        {
-            "$ref": "#/$defs/resampling_options"
-        },
-        {
-            "$ref": "#/$defs/dwi_processing_options"
-        },
-        {
-            "$ref": "#/$defs/particle_filtering_tractography_options"
-        },
-        {
-            "$ref": "#/$defs/local_tractography_options"
         },
         {
             "$ref": "#/$defs/subworkflows_hidden_options"
