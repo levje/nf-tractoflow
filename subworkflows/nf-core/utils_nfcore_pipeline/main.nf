@@ -310,7 +310,16 @@ def completionEmail(summary_params, email, email_on_fail, plaintext_email, outdi
             // Try to send HTML e-mail using sendmail
             def sendmail_tf = new File(workflow.launchDir.toString(), ".sendmail_tmp.html")
             sendmail_tf.withWriter { w -> w << sendmail_html }
-            ['sendmail', '-t'].execute() << sendmail_html
+            
+            def proc = ['sendmail', '-t'].execute()
+            proc << sendmail_html
+            proc.out.close()
+            def exitCode = proc.waitFor()
+
+            if (exitCode != 0) {
+                log.info("-${colors.purple}[${workflow.manifest.name}]${colors.yellow} sendmail exited with code ${exitCode}, stderr: ${proc.err.text}")
+                throw new Exception("sendmail exited with code ${exitCode}, stderr: ${proc.err.text}")
+            }
             log.info("-${colors.purple}[${workflow.manifest.name}]${colors.green} Sent summary e-mail to ${email_address} (sendmail)-")
         }
         catch (Exception msg) {
@@ -318,7 +327,15 @@ def completionEmail(summary_params, email, email_on_fail, plaintext_email, outdi
             log.debug("Trying with mail instead of sendmail")
             // Catch failures and try with plaintext
             def mail_cmd = ['mail', '-s', subject, '--content-type=text/html', email_address]
-            mail_cmd.execute() << email_html
+            def proc = mail_cmd.execute()
+            proc << email_html
+            proc.out.close()
+            def exitCode = proc.waitFor()
+
+            if (exitCode != 0) {
+                log.info("-${colors.purple}[${workflow.manifest.name}]${colors.yellow} mail exited with code ${exitCode}, stderr: ${proc.err.text}")
+                throw new Exception("mail exited with code ${exitCode}, stderr: ${proc.err.text}")
+            }
             log.info("-${colors.purple}[${workflow.manifest.name}]${colors.green} Sent summary e-mail to ${email_address} (mail)-")
         }
     }
