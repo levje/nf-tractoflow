@@ -26,6 +26,7 @@ workflow REGISTRATION {
     main:
 
         ch_versions = Channel.empty()
+        ch_multiqc_files = Channel.empty()
 
         if ( params.run_easyreg ) {
             // ** Registration using Easyreg ** //
@@ -95,6 +96,7 @@ workflow REGISTRATION {
             // ** Registration using ANAT TO DWI ** //
             REGISTRATION_ANATTODWI ( ch_register.anat_to_dwi )
             ch_versions = ch_versions.mix(REGISTRATION_ANATTODWI.out.versions.first())
+            ch_multiqc_files = ch_multiqc_files.mix(REGISTRATION_ANATTODWI.out.mqc)
 
             // ** Set compulsory outputs ** //
             image_warped = REGISTRATION_ANATTODWI.out.t1_warped
@@ -116,6 +118,7 @@ workflow REGISTRATION {
 
             REGISTRATION_ANTS ( ch_register )
             ch_versions = ch_versions.mix(REGISTRATION_ANTS.out.versions.first())
+            ch_multiqc_files = ch_multiqc_files.mix(REGISTRATION_ANTS.out.mqc)
 
             // ** Set compulsory outputs ** //
             image_warped = image_warped.mix(REGISTRATION_ANTS.out.image)
@@ -139,5 +142,6 @@ workflow REGISTRATION {
         transfo_trk         = transfo_trk             // channel: [ val(meta), [ <inverse-affine> ], [ inverse-warp ] ]
         segmentation        = out_segmentation        // channel: [ val(meta), segmentation ]
         ref_segmentation    = out_ref_segmentation    // channel: [ val(meta), ref-segmentation ]
+        mqc                 = ch_multiqc_files        // channel: [ val(meta), gif ], optional
         versions            = ch_versions             // channel: [ versions.yml ]
 }
