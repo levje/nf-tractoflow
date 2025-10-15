@@ -31,6 +31,7 @@ workflow NF_TRACTOFLOW {
 
     ch_versions = Channel.empty()
     ch_multiqc_files = Channel.empty()
+    qc_files = Channel.empty()
     ch_topup_config = Channel.empty()
     ch_bet_template = Channel.empty()
     ch_bet_probability = Channel.empty()
@@ -77,6 +78,15 @@ workflow NF_TRACTOFLOW {
             .filter{ it[1] }
     )
     ch_versions = ch_versions.mix(RUN.out.versions)
+    qc_files = qc_files.mix(RUN.out.mqc)
+
+    // Collate/filter QC files/images
+    qc_files = qc_files
+        .groupTuple()
+        .map { meta, files_list ->
+            def files = files_list.flatten().findAll { it != null }
+            return tuple(meta, files)
+        }
 
     //
     // Run RECONST/SH_METRICS
@@ -131,6 +141,7 @@ workflow NF_TRACTOFLOW {
     )
 
     MULTIQC (
+        qc_files,
         ch_multiqc_files.collect(),
         ch_multiqc_config.toList(),
         ch_multiqc_custom_config.toList(),
