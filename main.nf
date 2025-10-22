@@ -52,8 +52,9 @@ workflow SCILUS_NF_TRACTOFLOW {
         rev_b0,
         lesion
     )
-    emit:
-    multiqc_report = NF_TRACTOFLOW.out.multiqc_report // channel: /path/to/multiqc_report.html
+    // emit:
+    // multiqc_report_subject = NF_TRACTOFLOW.out.multiqc_report_subject
+    // multiqc_report_subjects = NF_TRACTOFLOW.out.multiqc_report_global
 }
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

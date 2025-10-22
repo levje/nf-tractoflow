@@ -3,7 +3,8 @@
     IMPORT MODULES / SUBWORKFLOWS / FUNCTIONS
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
-include { MULTIQC                } from '../modules/nf-core/multiqc/main'
+include { MULTIQC as MULTIQC_SUBJECT } from '../modules/nf-core/multiqc/main'
+include { MULTIQC as MULTIQC_GLOBAL } from '../modules/nf-core/multiqc/main'
 include { paramsSummaryMap       } from 'plugin/nf-schema'
 include { paramsSummaryMultiqc   } from '../subworkflows/nf-core/utils_nfcore_pipeline'
 include { softwareVersionsToYAML } from '../subworkflows/nf-core/utils_nfcore_pipeline'
@@ -140,19 +141,30 @@ workflow NF_TRACTOFLOW {
         )
     )
 
-    MULTIQC (
-        qc_files,
-        ch_multiqc_files.collect(),
-        ch_multiqc_config.toList(),
-        ch_multiqc_custom_config.toList(),
-        ch_multiqc_logo.toList(),
-        [],
-        []
-    )
+    // MULTIQC_SUBJECT (
+    //     qc_files,
+    //     ch_multiqc_files.collect(),
+    //     ch_multiqc_config.toList(),
+    //     ch_multiqc_custom_config.toList(),
+    //     ch_multiqc_logo.toList(),
+    //     [],
+    //     []
+    // )
+
+    // MULTIQC_GLOBAL (
+    //     global_qc_files,
+    //     ch_multiqc_files.collect(),
+    //     ch_multiqc_config.toList(),
+    //     ch_multiqc_custom_config.toList(),
+    //     ch_multiqc_logo.toList(),
+    //     [],
+    //     []
+    // )
 
     emit:
-    multiqc_report = MULTIQC.out.report.toList() // channel: /path/to/multiqc_report.html
-    versions       = ch_versions                 // channel: [ path(versions.yml) ]
+    // multiqc_report_subject = MULTIQC_SUBJECT.out.report.toList() // channel containing the report for each subject
+    // multiqc_report_global  = MULTIQC_GLOBAL.out.report.toList()  // channel with only one report for all subjects
+    versions               = ch_versions                 // channel: [ path(versions.yml) ]
 
 }
 
