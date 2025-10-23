@@ -1,0 +1,79 @@
+{
+    "bundle - recognize - params": {
+        "content": [
+            {
+                "bundles": [
+                    [
+                        {
+                            "id": "test",
+                            "single_end": false
+                        },
+                        "test__bundle_1_cleaned.trk",
+                        "test__bundle_2_cleaned.trk",
+                        "test__bundle_3_cleaned.trk",
+                        "test__bundle_4_cleaned.trk",
+                        "test__bundle_5_cleaned.trk"
+                    ]
+                ],
+                "versions": [
+                    "versions.yml:md5,1f560cf0ebc3623686b411831c7b2f90"
+                ]
+            }
+        ],
+        "meta": {
+            "nf-test": "0.9.2",
+            "nextflow": "25.04.7"
+        },
+        "timestamp": "2025-09-17T17:40:02.174844814"
+    },
+    "bundle - recognize - stub-run": {
+        "content": [
+            {
+                "bundles": [
+                    [
+                        {
+                            "id": "test",
+                            "single_end": false
+                        },
+                        "test__AF_L_cleaned.trk"
+                    ]
+                ],
+                "versions": [
+                    "versions.yml:md5,1f560cf0ebc3623686b411831c7b2f90"
+                ]
+            }
+        ],
+        "meta": {
+            "nf-test": "0.9.0",
+            "nextflow": "25.04.7"
+        },
+        "timestamp": "2025-09-17T17:40:14.633526447"
+    },
+    "bundle - recognize - base": {
+        "content": [
+            {
+                "bundles": [
+                    [
+                        {
+                            "id": "test",
+                            "single_end": false
+                        },
+                        "test__bundle_1_cleaned.trk",
+                        "test__bundle_2_cleaned.trk",
+                        "test__bundle_3_cleaned.trk",
+                        "test__bundle_4_cleaned.trk",
+                        "test__bundle_5_cleaned.trk"
+                    ]
+                ],
+                "versions": [
+                    "versions.yml:md5,1f560cf0ebc3623686b411831c7b2f90"
+                ]
+            }
+        ],
+        "meta": {
+            "nf-test": "0.9.2",
+            "nextflow": "25.04.7"
+        },
+        "timestamp": "2025-09-17T17:39:29.968449034"
+    }
+}
