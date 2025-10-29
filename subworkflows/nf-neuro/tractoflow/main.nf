@@ -26,7 +26,7 @@ include { BUNDLEPARC } from '../../local/bundleparc/main.nf'
 // Bundle Parc requires FODFs to be in descoteaux07_legacy specifically
 include { RECONST_FODF as BUNDLEPARC_FODF } from '../../../modules/nf-neuro/reconst/fodf/main'
 // IIT Atlas registration
-include { BUNDLES_IIT } from '../../../modules/local/bundles/iit/main.nf'
+include { BUNDLES_IIT } from '../../../modules/local/bundle/iit/main.nf'
 include { REGISTRATION_ANTS as REGISTER_IIT } from '../../../modules/nf-neuro/registration/ants/main'
 include { REGISTRATION_ANTSAPPLYTRANSFORMS as TRANSFORM_IIT_BUNDLES } from '../../../modules/nf-neuro/registration/antsapplytransforms/main.nf'
 include { VOLUME_ROISTATS } from '../../../modules/local/volume/roistats/main'
