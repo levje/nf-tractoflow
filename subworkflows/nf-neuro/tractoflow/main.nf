@@ -18,6 +18,20 @@ include {   RECONST_FODF       } from '../../../modules/nf-neuro/reconst/fodf/ma
 include { TRACKING_PFTTRACKING   } from '../../../modules/nf-neuro/tracking/pfttracking/main'
 include { TRACKING_LOCALTRACKING } from '../../../modules/nf-neuro/tracking/localtracking/main'
 
+// BUNDLE SEG
+include { BUNDLE_SEG } from '../../nf-neuro/bundle_seg/main.nf'
+
+// BUNDLE PARCELLATION
+include { BUNDLEPARC } from '../../local/bundleparc/main.nf'
+// Bundle Parc requires FODFs to be in descoteaux07_legacy specifically
+include { RECONST_FODF as BUNDLEPARC_FODF } from '../../../modules/nf-neuro/reconst/fodf/main'
+// IIT Atlas registration
+include { BUNDLES_IIT } from '../../../modules/local/bundles/iit/main.nf'
+include { REGISTRATION_ANTS as REGISTER_IIT } from '../../../modules/nf-neuro/registration/ants/main'
+include { REGISTRATION_ANTSAPPLYTRANSFORMS as TRANSFORM_IIT_BUNDLES } from '../../../modules/nf-neuro/registration/antsapplytransforms/main.nf'
+include { VOLUME_ROISTATS } from '../../../modules/local/volume/roistats/main'
+include { VOLUME_COLLECTSTATS } from '../../../modules/local/volume/collectstats/main'
+
 
 // ** UTILITY FUNCTIONS ** //
 
@@ -263,6 +277,84 @@ workflow TRACTOFLOW {
                 .join(TRACKING_LOCALTRACKING.out.seedmask)
                 .join(TRACKING_LOCALTRACKING.out.trackmask)
         }
+
+        //
+        // MODULE: Run BUNDLE_SEG
+        //
+        ch_bundle_seg = channel.empty()
+        if ( params.run_bundle_seg ) {
+            ch_input_bundle_seg = TRACKING_PFTTRACKING.out.trk
+                .mix(TRACKING_LOCALTRACKING.out.trk)
+                .groupTuple()
+
+            BUNDLE_SEG(RECONST_DTIMETRICS.out.fa, ch_input_bundle_seg)
+            
+            ch_versions = ch_versions.mix(BUNDLE_SEG.out.versions.first())
+            ch_bundle_seg = BUNDLE_SEG.out.bundles
+        }
+        //
+        // MODULE: Run BUNDLEPARC
+        //
+        ch_bundleparc = channel.empty()
+        if ( params.run_bundleparc ) {
+            BUNDLEPARC_FODF(ch_reconst_fodf)
+            ch_versions = ch_versions.mix(BUNDLEPARC_FODF.out.versions.first())
+
+            BUNDLEPARC(BUNDLEPARC_FODF.out.fodf)
+            ch_bundleparc = BUNDLEPARC.out.bundles
+            ch_versions = ch_versions.mix(BUNDLEPARC.out.versions.first())
+            ch_multiqc_files = ch_multiqc_files.mix(BUNDLEPARC.out.mqc)
+        }
+
+        //
+        // IIT ATLAS
+        //
+
+        // Extract bundle masks from IIT atlas
+        ch_iit_template_bundles = channel.fromPath( params.iit_atlas.bundle_masks_dir + "/*.nii.gz", checkIfExists: true ).collect()
+        ch_iit_template_thr = channel.fromPath( params.iit_atlas.bundle_masks_thresholds, checkIfExists: true )
+        BUNDLES_IIT(ch_iit_template_bundles, ch_iit_template_thr)
+
+        // Register IIT atlas to subject space
+        ch_iit_template_b0 = channel.fromPath( params.iit_atlas.template_b0 )
+        ch_input_register_iit = PREPROC_DWI.out.b0
+            .combine(ch_iit_template_b0)
+            .map{ meta, b0, template_b0 -> [meta, b0, template_b0, []] }
+        REGISTER_IIT(ch_input_register_iit)
+
+        // Apply the transformation to subject space to the bundles
+        ch_iit_transform_bundles = PREPROC_DWI.out.b0
+            .join(REGISTER_IIT.out.warp)
+            .join(REGISTER_IIT.out.affine)
+            .combine(BUNDLES_IIT.out.bundle_masks.toList())
+            .map {
+                meta, b0, warp, affine, bundles ->
+                    [meta, bundles, b0, warp, affine]
+            }
+        TRANSFORM_IIT_BUNDLES(ch_iit_transform_bundles)
+
+        //
+        // EXTRACT ROI VOLUME STATISTICS
+        //
+        // Input: [meta, [metrics_list], [masks]]
+        ch_input_volume_roistats = RECONST_DTIMETRICS.out.fa
+            .join(RECONST_DTIMETRICS.out.md)
+            .join(RECONST_DTIMETRICS.out.rd)
+            .join(RECONST_DTIMETRICS.out.ad)
+            .join(TRANSFORM_IIT_BUNDLES.out.warped_image)
+            .map {
+                meta, fa, md, rd, ad, iit_bundles ->
+                    def metrics_list = [fa, md, rd, ad]
+                    return [meta, metrics_list, iit_bundles]
+            }
+            
+        VOLUME_ROISTATS(ch_input_volume_roistats)
+
+        //
+        // COLLECT/GROUP ROI STATS
+        //
+        ch_iit_roi_stats = VOLUME_ROISTATS.out.stats_csv.collect()
+        VOLUME_COLLECTSTATS(ch_iit_roi_stats)
 
     emit:
 
