@@ -71,8 +71,8 @@ RUN conda install --name=base conda-anaconda-tos && \
     conda install --quiet --yes --name base \
         mamba \
         nextflow=$NXF_VER \
-        nf-core \
-        nf-test \
+        nf-core=3.2.0 \
+        nf-test=0.9.2 \
         black \
         prettier \
         pre-commit \

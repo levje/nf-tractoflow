@@ -39,10 +39,7 @@
                     "devcontainer-bash": {
                         "path": "bash",
                         "icon": "terminal-bash",
-                        "args": [
-                            "--init-file",
-                            "/root/.bash_profile"
-                        ]
+                        "args": ["--init-file", "/root/.bash_profile"]
                     }
                 }
             },
