@@ -1,0 +1,704 @@
+name: "tractoflow"
+description: |
+  This subworkflow implements the TractoFlow [1] pipeline. It can process raw diffusion and T1 weighted image to reduce
+  acquisition biases, align anatomical and diffusion space, compute DTI and fODF metrics and generate whole brain
+  tractograms.
+  ----------  Configuration  ----------
+  - nextflow.config : contains an example configuration for the subworkflow.
+        └── modules.config : contains the bindings to the modules parameters and some defaults making it Tractoflow.
+
+    i.e: nextflow.config import modules.config
+  --------------  Steps  --------------
+  PREPROCESS DWI (preproc_dwi, nf-neuro)
+    Preprocess the DWI image including brain extraction, MP-PCA denoising, eddy current and motion correction, N4 bias
+    correction, normalization and resampling.
+  PREPROCESS T1 (preproc_t1, nf-neuro)
+    Preprocess the T1 image including brain extraction, NL-Means denoising, bias field correction and resampling.
+  T1 REGISTRATION (anatomical_registration, nf-neuro)
+    Register the T1 image to the DWI image, using the b0 and the FA map as target for the diffusion space.
+  SEGMENTATION (anatomical_segmentation, nf-neuro)
+    Segment the T1 image into white matter, gray matter and CSF, in diffusion space.
+  DTI FITTING (dipy)
+    Fit the diffusion tensor model on the preprocessed DWI image and extract relevant metrics.
+  FRF ESTIMATION (scilpy)
+    Estimate the Fiber Response Function (FRF) from the preprocessed DWI image.
+  FODF FITTING (dipy)
+    Fit the Fiber Orientation Distribution Function (fODF), using Single or Multi Shell, Single or Multi Tissues models,
+    on the preprocessed DWI image and extract relevant metrics.
+  PFT TRACKING (dipy)
+    Perform Particle Filtering Tractography (PFT) on the FODF to generate whole brain tractograms.
+  LOCAL TRACKING (dipy on CPU, scilpy on GPU)
+    Perform Local Tracking on the FODF to generate whole brain tractograms.
+
+  [1] https://tractoflow-documentation.readthedocs.io
+keywords:
+  - diffusion
+  - MRI
+  - end-to-end
+  - tractography
+  - preprocessing
+  - fodf
+  - dti
+components:
+  - anatomical_segmentation
+  - preproc_dwi
+  - preproc_t1
+  - registration
+  - reconst/dtimetrics
+  - reconst/frf
+  - reconst/fodf
+  - reconst/meanfrf
+  - registration/antsapplytransforms
+  - tracking/localtracking
+  - tracking/pfttracking
+args:
+  - b0_max_threshold:
+      type: float
+      description: Maximum b-value threshold to consider as b0 volumes.
+      default: 10
+  - bvalue_tolerance:
+      type: float
+      description: Tolerance for b-value shell extraction and processing.
+      default: 20
+  - dwi_signal_sh_fit:
+      type: boolean
+      description: Enable spherical harmonics fitting of the DWI signal.
+      default: true
+  - dwi_signal_sh_fit_order:
+      type: integer
+      description: Spherical harmonics order for DWI signal fitting.
+      default: 6
+  - dwi_signal_sh_fit_basis:
+      type: string
+      description: Spherical harmonics basis for DWI signal fitting.
+      choices:
+        - descoteaux07
+        - descoteaux07_legacy
+        - tournier07
+        - tournier07_legacy
+      default: "descoteaux07"
+  - dwi_signal_sh_fit_shell:
+      type: boolean
+      description: Fit spherical harmonics on specific shell instead of all shells.
+      default: false
+  - preproc_dwi_run_denoising:
+      type: boolean
+      description: Enable MP-PCA denoising of the DWI image.
+      default: true
+  - dwi_denoise_patch_size:
+      type: integer
+      description: Patch size for MP-PCA denoising algorithm.
+      default: 7
+  - preproc_dwi_run_degibbs:
+      type: boolean
+      description: Enable Gibbs ringing removal correction.
+      default: false
+  - topup_eddy_run_topup:
+      type: boolean
+      description: Enable TOPUP correction for susceptibility distortions.
+      default: true
+  - dwi_topup_config_file:
+      type: string
+      description: Configuration file for TOPUP processing (e.g., "b02b0.cnf").
+      default: "b02b0.cnf"
+  - topup_eddy_run_eddy:
+      type: boolean
+      description: Enable EDDY correction for motion and eddy currents.
+      default: true
+  - dwi_eddy_executable:
+      type: string
+      description: EDDY executable to use (e.g., "eddy_cpu" or "eddy_cuda10.2").
+      choices:
+        - eddy_cpu
+        - eddy_cuda10.2
+      default: "eddy_cpu"
+  - dwi_eddy_restore_slices:
+      type: boolean
+      description: Enable slice-wise outlier detection and replacement in EDDY.
+      default: true
+  - preproc_t1_run_denoising:
+      type: boolean
+      description: Enable NL-Means denoising of the T1 image.
+      default: true
+  - preproc_t1_run_N4:
+      type: boolean
+      description: Enable N4 bias field correction for T1 image.
+      default: true
+  - preproc_t1_run_synthbet:
+      type: boolean
+      description: Enable SynthStrip brain extraction for T1 image.
+      default: false
+  - preproc_t1_run_ants_bet:
+      type: boolean
+      description: Enable ANTs-based brain extraction for T1 image.
+      default: true
+  - preproc_t1_run_crop:
+      type: boolean
+      description: Enable cropping of the T1 image to remove padding.
+      default: true
+  - preproc_t1_run_resampling:
+      type: boolean
+      description: Enable resampling of the T1 image to isotropic resolution.
+      default: true
+  - t1_resample_resolution_mm_iso:
+      type: integer
+      description: Isotropic resolution in mm for T1 resampling.
+      default: 1
+  - t1_resample_interpolation:
+      type: string
+      description: Interpolation method for T1 resampling (e.g., "lin", "cubic").
+      choices:
+        - nn
+        - lin
+        - quad
+        - cubic
+      default: "lin"
+  - preproc_dwi_run_N4:
+      type: boolean
+      description: Enable N4 bias field correction for DWI image.
+      default: true
+  - dwi_n4_knot_interval:
+      type: integer
+      description: Number of voxels between splines' knots for DWI N4 bias correction.
+      default: 1
+  - dwi_n4_subsampling:
+      type: integer
+      description: Subsampling factor for DWI N4 bias correction.
+      default: 2
+  - preproc_dwi_run_resampling:
+      type: boolean
+      description: Enable resampling of the DWI image to isotropic resolution.
+      default: true
+  - dwi_resample_resolution_mm_iso:
+      type: integer
+      description: Isotropic resolution in mm for DWI resampling.
+      default: 1
+  - dwi_resample_interpolation:
+      type: string
+      description: Interpolation method for DWI resampling (e.g., "lin", "cubic").
+      choices:
+        - nn
+        - lin
+        - quad
+        - cubic
+      default: "lin"
+  - dti_max_bvalue:
+      type: integer
+      description: Maximum b-value to consider for DTI shell extraction.
+      default: 1200
+  - dti_shells_to_fit:
+      type: string
+      description: Specific shells to use for DTI fitting (e.g., "0,1000" for b-values).
+      default: null
+  - fodf_min_bvalue:
+      type: integer
+      description: Minimum b-value to consider for fODF shell extraction.
+      default: 700
+  - fodf_shells_to_fit:
+      type: string
+      description: Specific shells to use for fODF fitting (e.g., "0,1000,2000" for b-values).
+      default: null
+  - frf_fa_max_threshold:
+      type: float
+      description: Maximum FA threshold for fiber response function estimation.
+      default: 0.7
+  - frf_fa_min_threshold:
+      type: float
+      description: Minimum FA threshold for fiber response function estimation.
+      default: 0.5
+  - frf_min_n_voxels:
+      type: integer
+      description: Minimum number of voxels required for FRF estimation.
+      default: 300
+  - frf_roi_radius:
+      type: integer
+      description: ROI radius in mm for fiber response function estimation.
+      default: 20
+  - frf_value_to_force:
+      type: string
+      description: Force specific FRF values instead of estimation (e.g., "15,4,4" for eigenvalues).
+      default: null
+  - frf_average_from_data:
+      type: boolean
+      description: Average fiber response functions across all subjects.
+      default: false
+  - fodf_sh_order:
+      type: integer
+      description: Spherical harmonics order for fODF reconstruction (must be even).
+      default: 8
+  - fodf_sh_basis:
+      type: string
+      description: Spherical harmonics basis for fODF reconstruction.
+      choices:
+        - descoteaux07
+        - descoteaux07_legacy
+        - tournier07
+        - tournier07_legacy
+      default: "descoteaux07"
+  - fodf_peaks_absolute_factor:
+      type: float
+      description: Absolute threshold factor for fODF peak extraction.
+      default: 2.0
+  - fodf_peaks_relative_threshold:
+      type: float
+      description: Relative threshold for fODF peak extraction.
+      default: 0.1
+  - fodf_peaks_ventricle_max_fa:
+      type: float
+      description: Maximum FA value for ventricle mask creation.
+      default: 0.1
+  - fodf_peaks_ventricle_min_md:
+      type: float
+      description: Minimum MD value for ventricle mask creation.
+      default: 0.003
+  - run_pft:
+      type: boolean
+      description: Enable Particle Filtering Tractography.
+      default: true
+  - pft_random_seed:
+      type: integer
+      description: Random seed for PFT tractography reproducibility.
+      default: 0
+  - pft_algorithm:
+      type: string
+      description: Algorithm to use for PFT tractography (e.g., "prob", "det").
+      choices:
+        - prob
+        - det
+      default: "prob"
+  - pft_step_mm:
+      type: float
+      description: Step size in mm for PFT tractography.
+      default: 0.5
+  - pft_theta_max_deviation:
+      type: integer
+      description: Maximum angular deviation in degrees for PFT tracking.
+      default: 20
+  - pft_min_streamline_length:
+      type: integer
+      description: Minimum streamline length in mm for PFT tracking.
+      default: 20
+  - pft_max_streamline_length:
+      type: integer
+      description: Maximum streamline length in mm for PFT tracking.
+      default: 200
+  - pft_seeding_type:
+      type: string
+      description: Tissue type for PFT seeding mask generation (e.g., "wm", "fa").
+      choices:
+        - wm
+        - interface
+        - fa
+      default: "wm"
+  - pft_seeding_strategy:
+      type: string
+      description: Seeding strategy for PFT tractography (e.g., "npv", "nt").
+      choices:
+        - npv
+        - nt
+      default: "npv"
+  - pft_number_of_seeds:
+      type: integer
+      description: Number of seeds per voxel - npv (or total - nt) for PFT tracking.
+      default: 10
+  - pft_fa_min_threshold:
+      type: float
+      description: Minimum FA threshold for PFT tracking.
+      default: 0.1
+  - pft_number_of_particles:
+      type: integer
+      description: Number of particles for PFT algorithm.
+      default: 15
+  - pft_backward_step_mm:
+      type: integer
+      description: Backward step size in mm for PFT tracking.
+      default: 2
+  - pft_forward_step_mm:
+      type: integer
+      description: Forward step size in mm for PFT tracking.
+      default: 1
+  - pft_compression_step_mm:
+      type: float
+      description: Compression step size in mm for PFT streamlines.
+      default: 0.2
+  - run_local_tracking:
+      type: boolean
+      description: Enable Local Tractography.
+      default: true
+  - lt_processor:
+      type: string
+      description: Processor type for local tracking (e.g., "cpu", "gpu").
+      choices:
+        - cpu
+        - gpu
+      default: "cpu"
+  - lt_gpu_batch_size:
+      type: integer
+      description: Batch size for GPU-based local tracking.
+      default: 10000
+  - lt_random_seed:
+      type: integer
+      description: Random seed for local tracking reproducibility.
+      default: 0
+  - lt_algorithm:
+      type: string
+      description: Algorithm to use for local tractography (e.g., "prob", "det").
+      choices:
+        - prob
+        - det
+        - ptt
+        - eudx
+      default: "prob"
+  - lt_step_mm:
+      type: float
+      description: Step size in mm for local tracking.
+      default: 0.5
+  - lt_theta_max_deviation:
+      type: integer
+      description: Maximum angular deviation in degrees for local tracking.
+      default: 20
+  - lt_min_streamline_length:
+      type: integer
+      description: Minimum streamline length in mm for local tracking.
+      default: 20
+  - lt_max_streamline_length:
+      type: integer
+      description: Maximum streamline length in mm for local tracking.
+      default: 200
+  - lt_seeding_type:
+      type: string
+      description: Tissue type for local tracking seeding mask generation (e.g., "wm", "fa").
+      choices:
+        - wm
+        - fa
+      default: "wm"
+  - lt_seeding_strategy:
+      type: string
+      description: Seeding strategy for local tractography (e.g., "npv", "nt").
+      choices:
+        - npv
+        - nt
+      default: "npv"
+  - lt_number_of_seeds:
+      type: integer
+      description: Number of seeds per voxel for local tracking.
+      default: 10
+  - lt_fa_min_threshold_for_seeding:
+      type: float
+      description: Minimum FA threshold for local tracking seeding mask.
+      default: 0.1
+  - lt_tracking_type:
+      type: string
+      description: Tissue type for local tracking mask generation (e.g., "wm", "fa").
+      choices:
+        - wm
+        - fa
+      default: "wm"
+  - lt_fa_min_threshold_for_tracking:
+      type: float
+      description: Minimum FA threshold for local tracking mask.
+      default: 0.1
+  - lt_compression_step_mm:
+      type: float
+      description: Compression step size in mm for local tracking streamlines.
+      default: 0.2
+input:
+  - ch_dwi:
+      type: file
+      description: |
+        The input channel containing the DWI file, B-values and B-vectors in FSL format files.
+        Structure: [ val(meta), path(dwi), path(bval), path(bvec) ]
+  - ch_t1:
+      type: file
+      description: |
+        The input channel containing the anatomical T1 weighted image.
+        Structure: [ val(meta), path(t1) ]
+  - ch_sbref:
+      type: file
+      description: |
+        (Optional) The input channel containing the single-band b0 reference for the DWI.
+        Structure: [ val(meta), path(rev_b0) ]
+  - ch_rev_dwi:
+      type: file
+      description: |
+        (Optional) The input channel containing the reverse DWI file, B-values and B-vectors in FSL format files.
+        Structure: [ val(meta), path(rev_dwi), path(bval), path(bvec) ]
+  - ch_rev_sbref:
+      type: file
+      description: |
+        (Optional) The input channel containing the reverse b0 file.
+        Structure: [ val(meta), path(rev_b0) ]
+  - ch_aparc_aseg:
+      type: file
+      description: |
+        (Optional) The input channel containing freesurfer brain segmentation and gray matter parcellation (aparc+aseg).
+        Must be supplied with ch_wm_parc. When supplied, those are used to generate tissues masks and probability maps.
+        Structure: [ val(meta), path(aparc_aseg) ]
+  - ch_wm_parc:
+      type: file
+      description: |
+        (Optional) The input channel containing freesurfer white matter parcellations (wmparc). Must be supplied with
+        ch_aparc_aseg. When supplied, those are used to generate tissues masks and probability maps.
+        Structure: [ val(meta), path(wmparc) ]
+  - ch_topup_config:
+      type: file
+      description: |
+        (Optional) The input channel containing the config file for Topup. This input is optional.
+        See https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/topup/TopupUsersGuide#Configuration_files.
+        Structure: [ path(config_file) ]
+  - ch_bet_template:
+      type: file
+      description: |
+        (Optional) The input channel containing the anatomical template for antsBET.
+        Structure: [ val(meta), path(bet_template) ]
+  - ch_bet_probability_map:
+      type: file
+      description: |
+        (Optional) The input channel containing the brain probability mask for antsBET,
+        with intensity range 1 (definitely brain) to 0 (definitely background).
+        Structure: [ val(meta), path(probability_map) ]
+  - ch_lesion_mask:
+      type: file
+      description: |
+        (Optional) The input channel containing the lesion mask for segmentation.
+        Structure: [ val(meta), path(lesion_mask) ]
+output:
+  - dwi:
+      type: file
+      description: |
+        Preprocessed DWI image.
+        Structure: [ val(meta), path(dwi), path(bval), path(bvec) ]
+  - t1:
+      type: file
+      description: |
+        T1 image warped to the DWI space.
+        Structure: [ val(meta), path(t1) ]
+  - wm_mask:
+      type: file
+      description: |
+        White matter mask.
+        Structure: [ val(meta), path(wm_mask) ]
+  - gm_mask:
+      type: file
+      description: |
+        Gray matter mask.
+        Structure: [ val(meta), path(gm_mask) ]
+  - csf_mask:
+      type: file
+      description: |
+        Cerebrospinal fluid mask.
+        Structure: [ val(meta), path(csf_mask) ]
+  - wm_map:
+      type: file
+      description: |
+        White matter probability map.
+        Structure: [ val(meta), path(wm_map) ]
+  - gm_map:
+      type: file
+      description: |
+        Gray matter probability map.
+        Structure: [ val(meta), path(gm_map) ]
+  - csf_map:
+      type: file
+      description: |
+        Cerebrospinal fluid probability map.
+        Structure: [ val(meta), path(csf_map) ]
+  - aparc_aseg:
+      type: file
+      description: |
+        (Optional) Freesurfer brain segmentation and gray matter parcellation (aparc+aseg) in diffusion space. Only
+        available if ch_aparc_aseg is provided in inputs.
+        Structure: [ val(meta), path(aparc_aseg) ]
+  - wmparc:
+      type: file
+      description: |
+        (Optional) Freesurfer white matter parcellations (wmparc) in diffusion space. Only available if ch_wm_parc
+        is provided in inputs.
+        Structure: [ val(meta), path(wmparc) ]
+  - anatomical_to_diffusion:
+      type: file
+      description: |
+        Transformation matrix from the anatomical space to the diffusion space.
+        Structure: [ val(meta), [path(warp), path(affine)] ]
+  - diffusion_to_anatomical:
+      type: file
+      description: |
+        Transformation matrix from the diffusion space to the anatomical space.
+        Structure: [ val(meta), [path(affine), path(warp)] ]
+  - t1_native:
+      type: file
+      description: |
+        Preprocessed T1 in anatomical space.
+        Structure: [ val(meta), path(t1) ]
+  - dti_tensor:
+      type: file
+      description: |
+        4-D Diffusion tensor image, with 6 components in the last dimensions, ordered by FSL convention
+        (row-major : Dxx, Dxy, Dxz, Dyy, Dyz, Dzz).
+        Structure: [ val(meta), path(dti_tensor) ]
+  - dti_md:
+      type: file
+      description: |
+        Mean diffusivity map.
+        Structure: [ val(meta), path(dti_md) ]
+  - dti_rd:
+      type: file
+      description: |
+        Radial diffusivity map.
+        Structure: [ val(meta), path(dti_rd) ]
+  - dti_ad:
+      type: file
+      description: |
+        Axial diffusivity map.
+        Structure: [ val(meta), path(dti_ad) ]
+  - dti_fa:
+      type: file
+      description: |
+        Fractional anisotropy map.
+        Structure: [ val(meta), path(dti_fa) ]
+  - dti_rgb:
+      type: file
+      description: |
+        RGB map of the diffusion tensor.
+        Structure: [ val(meta), path(dti_rgb) ]
+  - dti_peaks:
+      type: file
+      description: |
+        Principal direction of the diffusion tensor.
+        Structure: [ val(meta), path(dti_peaks) ]
+  - dti_evecs:
+      type: file
+      description: |
+        Eigenvectors of the diffusion tensor, ordered by eigenvalue.
+        Structure: [ val(meta), path(dti_evecs) ]
+  - dti_evals:
+      type: file
+      description: |
+        Eigenvalues of the diffusion tensor.
+        Structure: [ val(meta), path(dti_evals) ]
+  - dti_residual:
+      type: file
+      description: |
+        Residuals of the diffusion tensor fitting.
+        Structure: [ val(meta), path(dti_residual) ]
+  - dti_ga:
+      type: file
+      description: |
+        Generalized anisotropy map.
+        Structure: [ val(meta), path(dti_ga) ]
+  - dti_mode:
+      type: file
+      description: |
+        Mode of the diffusion tensor.
+        Structure: [ val(meta), path(dti_mode) ]
+  - dti_norm:
+      type: file
+      description: |
+        Norm of the diffusion tensor.
+        Structure: [ val(meta), path(dti_norm) ]
+  - fiber_response:
+      type: file
+      description: |
+        Fiber Response Function (FRF) estimated from the DWI image.
+        If using Single Tissue
+            Structure: [ val(meta), path(fiber_response) ]
+        If using Multi Tissues
+            Structure: [ val(meta), path(wm_fiber_response), path(gm_fiber_response), path(csf_fiber_response) ]
+  - fodf:
+      type: file
+      description: |
+        Fiber Orientation Distribution Function (fODF) estimated from the DWI image.
+        If using Single Tissue
+            Structure: [ val(meta), path(fodf) ]
+        If using Multi Tissues
+            Structure: [ val(meta), path(wm_fodf), path(gm_fodf), path(csf_fodf) ]
+  - fodf_rgb:
+      type: file
+      description: |
+        RGB map of the fODF, normalized by volume fraction of WM.
+        Structure: [ val(meta), path(fodf_rgb) ]
+  - fodf_peaks:
+      type: file
+      description: |
+        Peaks of the fODF.
+        Structure: [ val(meta), path(fodf_peaks) ]
+  - afd_max:
+      type: file
+      description: |
+        Maximum Apparent Fiber Density (AFD) map.
+        Structure: [ val(meta), path(afd_max) ]
+  - afd_total:
+      type: file
+      description: |
+        Total Apparent Fiber Density (AFD) map.
+        Structure: [ val(meta), path(afd_total) ]
+  - afd_sum:
+      type: file
+      description: |
+        Sum of Apparent Fiber Density (AFD) map.
+        Structure: [ val(meta), path(afd_sum) ]
+  - nufo:
+      type: file
+      description: |
+        Number of Unique Fibers Orientations (NUFO) map.
+        Structure: [ val(meta), path(nufo) ]
+  - volume_fraction:
+      type: file
+      description: |
+        Tissues volume fraction map.
+        Structure: [ val(meta), path(volume_fraction) ]
+  - pft_tractogram:
+      type: file
+      description: |
+        Whole brain tractogram generated with Particle Filtering Tractography (PFT).
+        Structure: [ val(meta), path(pft_tractogram) ]
+  - pft_config:
+      type: file
+      description: |
+        Configuration file used for Particle Filtering Tractography (PFT).
+        Structure: [ val(meta), path(pft_config) ]
+  - pft_map_include:
+      type: file
+      description: |
+        Include map used for Particle Filtering Tractography (PFT).
+        Structure: [ val(meta), path(pft_map_include) ]
+  - pft_map_exclude:
+      type: file
+      description: |
+        Exclude map used for Particle Filtering Tractography (PFT).
+        Structure: [ val(meta), path(pft_map_exclude) ]
+  - pft_seeding_mask:
+      type: file
+      description: |
+        Seeding mask used for Particle Filtering Tractography (PFT).
+      Structure: [val(meta), path(pft_seeding_mask)]
+  - local_tractogram:
+      type: file
+      description: |
+        Whole brain tractogram generated with Local Tracking.
+        Structure: [ val(meta), path(local_tractogram) ]
+  - local_config:
+      type: file
+      description: |
+        Configuration file used for Local Tracking.
+        Structure: [ val(meta), path(local_config) ]
+  - local_seeding_mask:
+      type: file
+      description: |
+        Seeding mask used for Local Tracking.
+        Structure: [ val(meta), path(local_seeding_mask) ]
+  - local_tracking_mask:
+      type: file
+      description: |
+        Tracking mask used for Local Tracking.
+        Structure: [ val(meta), path(local_tracking_mask) ]
+  - versions:
+      type: file
+      description: |
+        File containing software versions
+        Structure: [ path(versions.yml) ]
+      pattern: "versions.yml"
+authors:
+  - "@AlexVCaron"
+maintainers:
+  - "@AlexVCaron"
