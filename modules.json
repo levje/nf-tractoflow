@@ -115,6 +115,11 @@
                         "git_sha": "c399791d89aad88aceedec1bc5221dfeb0952cd5",
                         "installed_by": ["tractoflow"]
                     },
+                    "reconst/freewater": {
+                        "branch": "main",
+                        "git_sha": "2dfca810725af917cb981206040aa3211fb18dc4",
+                        "installed_by": ["modules"]
+                    },
                     "reconst/frf": {
                         "branch": "main",
                         "git_sha": "a51881f1c316e0e52b68fa66d7465c32339e2142",
@@ -124,6 +129,21 @@
                         "branch": "main",
                         "git_sha": "f9676160a7d9e71ad072c39f32bcc7e7f1621d7a",
                         "installed_by": ["tractoflow"]
+                    },
+                    "reconst/noddi": {
+                        "branch": "main",
+                        "git_sha": "0bd03a8352c21bd347acabd58f2e261688a105fc",
+                        "installed_by": ["modules"]
+                    },
+                    "reconst/qball": {
+                        "branch": "main",
+                        "git_sha": "5420aa212ac5ad3f255f50ca5b0d5995693f8c35",
+                        "installed_by": ["modules"]
+                    },
+                    "reconst/shmetrics": {
+                        "branch": "main",
+                        "git_sha": "2dfca810725af917cb981206040aa3211fb18dc4",
+                        "installed_by": ["modules"]
                     },
                     "reconst/shsignal": {
                         "branch": "main",
