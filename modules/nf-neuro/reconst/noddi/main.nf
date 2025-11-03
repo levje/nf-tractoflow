@@ -13,7 +13,7 @@ process RECONST_NODDI {
         tuple val(meta), path("*__fit_NDI.nii.gz")      , emit: ndi, optional: true
         tuple val(meta), path("*__fit_ECVF.nii.gz")     , emit: ecvf, optional: true
         tuple val(meta), path("*__fit_ODI.nii.gz")      , emit: odi, optional: true
-        path("kernels")                                 , emit: kernels, optional: true
+        tuple val(meta), path("kernels")                , emit: kernels, optional: true
         path "versions.yml"                             , emit: versions
 
     when:
@@ -33,6 +33,7 @@ process RECONST_NODDI {
     def compute_only = task.ext.compute_only && !kernels ? "--compute_only" : ""
 
     """
+    export HOME=/tmp
     scil_NODDI_maps $dwi $bval $bvec $para_diff $iso_diff $lambda1 \
         $lambda2 $nb_threads $b_thr $set_mask $set_kernels --skip_b0_check $compute_only
 

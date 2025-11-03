@@ -32,6 +32,13 @@ include { REGISTRATION_ANTSAPPLYTRANSFORMS as TRANSFORM_IIT_BUNDLES } from '../.
 include { VOLUME_ROISTATS } from '../../../modules/local/volume/roistats/main'
 include { VOLUME_COLLECTSTATS } from '../../../modules/local/volume/collectstats/main'
 
+// Advanced DTI
+include { RECONST_FREEWATER } from '../../../modules/nf-neuro/reconst/freewater/main'
+include { RECONST_DTIMETRICS as FW_CORRECTED_DTIMETRICS } from '../../../modules/nf-neuro/reconst/dtimetrics/main'
+include { RECONST_SHMETRICS } from '../../../modules/nf-neuro/reconst/shmetrics/main'
+include { RECONST_QBALL } from '../../../modules/nf-neuro/reconst/qball/main'
+include { RECONST_NODDI as AMICO_KERNELS } from '../../../modules/nf-neuro/reconst/noddi/main'
+include { RECONST_NODDI } from '../../../modules/nf-neuro/reconst/noddi/main'
 
 // ** UTILITY FUNCTIONS ** //
 
@@ -333,21 +340,104 @@ workflow TRACTOFLOW {
             }
         TRANSFORM_IIT_BUNDLES(ch_iit_transform_bundles)
 
-        //
-        // EXTRACT ROI VOLUME STATISTICS
-        //
-        // Input: [meta, [metrics_list], [masks]]
+        // Prepare volume ROI metric extraction
+        // Start by collecting DTI metrics
         ch_input_volume_roistats = RECONST_DTIMETRICS.out.fa
             .join(RECONST_DTIMETRICS.out.md)
             .join(RECONST_DTIMETRICS.out.rd)
             .join(RECONST_DTIMETRICS.out.ad)
-            .join(TRANSFORM_IIT_BUNDLES.out.warped_image)
-            .map {
-                meta, fa, md, rd, ad, iit_bundles ->
-                    def metrics_list = [fa, md, rd, ad]
-                    return [meta, metrics_list, iit_bundles]
-            }
 
+        if (params.run_advanced_dti) {
+            //
+            // ADVANCED DTI METRICS
+            //
+
+            // Precompute the COMMIT kernels for NODDI and Free Water
+            AMICO_KERNELS(
+                PREPROC_DWI.out.dwi
+                    .join(PREPROC_DWI.out.bval)
+                    .join(PREPROC_DWI.out.bvec)
+                    .join(PREPROC_DWI.out.b0_mask)
+                    .map { meta, dwi, bval, bvec, b0_mask ->
+                        [meta, dwi, bval, bvec, b0_mask, []]
+                    }
+            )
+
+            // NODDI Reconstruction
+            ch_noddi_input = PREPROC_DWI.out.dwi
+                .join(PREPROC_DWI.out.bval)
+                .join(PREPROC_DWI.out.bvec)
+                .join(PREPROC_DWI.out.b0_mask)
+                .join(AMICO_KERNELS.out.kernels)
+
+            RECONST_NODDI( ch_noddi_input )
+            ch_versions = ch_versions.mix(RECONST_NODDI.out.versions.first())
+            ch_input_volume_roistats = ch_input_volume_roistats
+                .join(RECONST_NODDI.out.odi)
+                .join(RECONST_NODDI.out.ecvf)
+                .join(RECONST_NODDI.out.fwf)
+                .join(RECONST_NODDI.out.ndi)
+
+            // Free Water Elimination
+            ch_freewater_input = PREPROC_DWI.out.dwi
+                .join(PREPROC_DWI.out.bval)
+                .join(PREPROC_DWI.out.bvec)
+                .join(PREPROC_DWI.out.b0_mask)
+                .map {
+                    meta, dwi, bval, bvec, b0_mask ->
+                        [meta, dwi, bval, bvec, b0_mask, []] // TODO: add precomputed kernels
+                }
+
+            RECONST_FREEWATER( ch_freewater_input )
+            ch_versions = ch_versions.mix(RECONST_FREEWATER.out.versions.first())
+            ch_input_volume_roistats = ch_input_volume_roistats
+                .join(RECONST_FREEWATER.out.fw)
+
+            // -- Need to reprocess RECONST_DTIMETRICS to get
+            //  FW corrected FA, MD, RD, AD, etc.
+            ch_fw_corrected_dti_metrics = RECONST_FREEWATER.out.dwi_fw_corrected
+                .join(PREPROC_DWI.out.bval)
+                .join(PREPROC_DWI.out.bvec)
+                .join(PREPROC_DWI.out.b0_mask)
+
+            FW_CORRECTED_DTIMETRICS( ch_fw_corrected_dti_metrics )
+            ch_input_volume_roistats = ch_input_volume_roistats
+                .join(FW_CORRECTED_DTIMETRICS.out.fa)
+                .join(FW_CORRECTED_DTIMETRICS.out.md)
+                .join(FW_CORRECTED_DTIMETRICS.out.rd)
+                .join(FW_CORRECTED_DTIMETRICS.out.ad)
+
+            // Spherical Harmonics Metrics
+            ch_shmetrics_input = RECONST_FODF.out.fodf
+                .join(PREPROC_DWI.out.b0_mask)
+                .join(RECONST_DTIMETRICS.out.fa)
+                .join(RECONST_DTIMETRICS.out.md)
+
+            RECONST_SHMETRICS( ch_shmetrics_input )
+            ch_versions = ch_versions.mix(RECONST_SHMETRICS.out.versions.first())
+
+            // Q-Ball Reconstruction
+            ch_qball_input = PREPROC_DWI.out.dwi
+                .join(PREPROC_DWI.out.bval)
+                .join(PREPROC_DWI.out.bvec)
+                .join(PREPROC_DWI.out.b0_mask)
+
+            RECONST_QBALL( ch_qball_input )
+            ch_versions = ch_versions.mix(RECONST_QBALL.out.versions.first())
+        }
+
+        //
+        // EXTRACT ROI VOLUME STATISTICS
+        //
+        // Input: [meta, [metrics_list], [masks]]
+
+        ch_input_volume_roistats = ch_input_volume_roistats
+            .map {tuple ->
+                def meta = tuple[0]
+                def metrics = tuple[1..-1]
+                return [meta, metrics]
+            }
+            .join(TRANSFORM_IIT_BUNDLES.out.warped_image)
         VOLUME_ROISTATS(ch_input_volume_roistats)
 
         //

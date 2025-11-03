@@ -1,5 +1,5 @@
 process BUNDLES_IIT {
-    tag '$meta.id'
+    tag 'atlas'
     label 'process_single'
 
     container "scilus/scilpy:2.2.0_cpu"
