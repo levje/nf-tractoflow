@@ -16,6 +16,7 @@ include { BUNDLE_IIT             } from '../modules/local/bundle/iit/main'
 include { VOLUME_ROISTATS        } from '../modules/local/volume/roistats/main'
 include { STATS_METRICSINROI     } from '../modules/nf-neuro/stats/metricsinroi/main'
 include { STATS_JSONTOCSV        } from '../modules/local/stats/jsontocsv/main'
+include { OUTPUT_TEMPLATE_SPACE as TO_MNI  } from '../subworkflows/nf-neuro/output_template_space/main'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -94,32 +95,10 @@ workflow NF_TRACTOFLOW {
         )
 
     if (params.run_atlas_based_tractometry) {
-        //
-        // IIT ATLAS
-        //
-
         // Extract bundle masks from IIT atlas
         ch_iit_template_bundles = channel.fromPath( params.iit_atlas.bundle_masks_dir + "/*.nii.gz", checkIfExists: true ).collect()
         ch_iit_template_thr = channel.fromPath( params.iit_atlas.bundle_masks_thresholds, checkIfExists: true )
         BUNDLE_IIT(ch_iit_template_bundles, ch_iit_template_thr)
-
-        // Register IIT atlas to subject space
-        ch_iit_template_b0 = channel.fromPath( params.iit_atlas.template_b0 )
-        ch_input_register_iit = TRACTOFLOW.out.b0
-            .combine(ch_iit_template_b0)
-            .map{ meta, b0, template_b0 -> [meta, b0, template_b0, []] }
-        REGISTER_ATLAS_BUNDLES(ch_input_register_iit)
-
-        // Apply the transformation to subject space to the bundles
-        ch_iit_transform_bundles = TRACTOFLOW.out.b0
-            .join(REGISTER_ATLAS_BUNDLES.out.forward_image_transform)
-            .combine(BUNDLE_IIT.out.bundle_masks.toList())
-            .map {
-                meta, b0, transform, bundles ->
-                    [meta, bundles, b0, transform]
-            }
-        TRANSFORM_ATLAS_BUNDLES(ch_iit_transform_bundles)
-        ch_versions = ch_versions.mix(TRANSFORM_ATLAS_BUNDLES.out.versions)
 
         // Prepare volume ROI metric extraction
         // Start by collecting DTI metrics
@@ -128,25 +107,41 @@ workflow NF_TRACTOFLOW {
             .join(TRACTOFLOW.out.dti_rd)
             .join(TRACTOFLOW.out.dti_ad)
 
-        //
-        // EXTRACT ROI VOLUME STATISTICS
-        //
-        // Input: [meta, [metrics_list], [masks]]
-        ch_input_volume_roistats = ch_input_volume_roistats
+
+        // Register all metrics to MNI space
+        // To compute metrics in MNI space
+        ch_input_metrics_to_mni = ch_input_volume_roistats
             .map {tuple ->
                 def meta = tuple[0]
                 def metrics = tuple[1..-1]
                 return [meta, metrics]
             }
-            .join(TRANSFORM_ATLAS_BUNDLES.out.warped_image)
+
+        TO_MNI(
+            TRACTOFLOW.out.t1,
+            ch_input_metrics_to_mni,
+            Channel.empty(),
+            Channel.empty(),
+            Channel.empty(),
+            Channel.empty()
+        )
+
+        //
+        // EXTRACT ROI VOLUME STATISTICS
+        //
+        // Input: [meta, [metrics_list], [masks]]
+        ch_input_volume_roistats = TO_MNI.out.ch_registered_nifti_files
+            .combine(BUNDLE_IIT.out.bundle_masks.toList())
             .map {
                 meta, metrics, masks ->
                     [meta, metrics, masks, []]
             }
 
         STATS_METRICSINROI(ch_input_volume_roistats)
+        ch_versions = ch_versions.mix(STATS_METRICSINROI.out.versions)
 
         STATS_JSONTOCSV(STATS_METRICSINROI.out.mqc)
+        ch_versions = ch_versions.mix(STATS_JSONTOCSV.out.versions)
 
         //
         // COLLECT/GROUP ROI STATS
