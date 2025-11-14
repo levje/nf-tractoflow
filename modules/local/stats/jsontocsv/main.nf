@@ -23,12 +23,17 @@ process STATS_JSONTOCSV {
         with_entries(
             .key |= (
             sub("${prefix}_"; "") |
-            sub("_mask_warped"; "")
+            sub("_mask"; "") |
+            sub("_warped"; "")
             )
             # Also update keys of the nested object
             | .value |= (
                 with_entries(
-                .key |= sub("${prefix}__"; "")
+                    .key |= (
+                    sub("${prefix}__"; "") |
+                    sub("${prefix}_"; "") |
+                    sub("_warped"; "")
+                    )
                 )
             )
         )
