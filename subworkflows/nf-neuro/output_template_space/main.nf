@@ -117,9 +117,8 @@ workflow OUTPUT_TEMPLATE_SPACE {
     // ** Strip the template from the meta field so we can combine it ** //
     ch_t2w_tpl_out = MASK_T2W.out.image
         .map{ _meta, image -> image }
-    ////////////////////////////////////////////////////////////
-    // ** If the template does not have a brain mask ** //
 
+    // ** If the template does not have a brain mask ** //
     // ** The template may not have a brain mask, so we will ** //
     // ** run BET by default (bit painful, but necessary)    ** //
     ch_bet_tpl_t1w = ch_t1w_tpl
@@ -144,8 +143,6 @@ workflow OUTPUT_TEMPLATE_SPACE {
     // ** Strip the template from the meta field so we can combine it ** //
     ch_t2w_tpl_out = ch_t2w_tpl_out.mix(BET_T2W.out.image
         .map{ _meta, image -> image })
-
-    ////////////////////////////////////////////////////////////
 
     ch_template = ch_anat
         .map{ meta, _anat -> meta }
@@ -201,7 +198,8 @@ workflow OUTPUT_TEMPLATE_SPACE {
     ch_tractograms_to_transform = ch_trk_files
         .join(REGISTRATION.out.image_warped)
         .join(REGISTRATION.out.backward_affine)
-        .join(REGISTRATION.out.backward_warp)
+        .join(REGISTRATION.out.backward_warp, remainder: true)
+        .filter{ it.size() > 4 }
         .map{ meta, trk, image, affine, warp ->
             [meta, image, affine, trk, [], warp ?: []]
         }
@@ -216,7 +214,7 @@ workflow OUTPUT_TEMPLATE_SPACE {
         ch_registered_nifti_files   = WARPIMAGES.out.warped_image               // channel: [ val(meta), [ warped_image ] ]
         ch_registered_mask_files    = WARPMASK.out.warped_image                 // channel: [ val(meta), [ warped_mask ] ]
         ch_registered_labels_files  = WARPLABELS.out.warped_image               // channel: [ val(meta), [ warped_labels ] ]
-        // ch_registered_trk_files     = REGISTRATION_TRACTOGRAM.out.tractogram    // channel: [ val(meta), [ warped_tractogram ] ]
+        ch_registered_trk_files     = REGISTRATION_TRACTOGRAM.out.tractogram    // channel: [ val(meta), [ warped_tractogram ] ]
         mqc                         = ch_mqc                                    // channel: [ mqc ]
         versions                    = ch_versions                               // channel: [ versions.yml ]
 }
