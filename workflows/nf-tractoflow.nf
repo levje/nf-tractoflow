@@ -12,7 +12,6 @@ include { TRACTOFLOW             } from '../subworkflows/nf-neuro/tractoflow'
 include { RECONST_SHSIGNAL       } from '../modules/nf-neuro/reconst/shsignal'
 include { REGISTRATION_ANTS as REGISTER_ATLAS_BUNDLES } from '../modules/nf-neuro/registration/ants/main'
 include { REGISTRATION_ANTSAPPLYTRANSFORMS as TRANSFORM_ATLAS_BUNDLES } from '../modules/nf-neuro/registration/antsapplytransforms/main.nf'
-include { BUNDLE_IIT             } from '../modules/local/bundle/iit/main'
 include { VOLUME_ROISTATS        } from '../modules/local/volume/roistats/main'
 include { STATS_METRICSINROI     } from '../modules/nf-neuro/stats/metricsinroi/main'
 include { STATS_JSONTOCSV        } from '../modules/local/stats/jsontocsv/main'
@@ -96,9 +95,7 @@ workflow NF_TRACTOFLOW {
 
     if (params.run_atlas_based_tractometry) {
         // Extract bundle masks from IIT atlas
-        ch_iit_template_bundles = channel.fromPath( params.iit_atlas.bundle_masks_dir + "/*.nii.gz", checkIfExists: true ).collect()
-        ch_iit_template_thr = channel.fromPath( params.iit_atlas.bundle_masks_thresholds, checkIfExists: true )
-        BUNDLE_IIT(ch_iit_template_bundles, ch_iit_template_thr)
+        ch_iit_template_bundles_mask = channel.fromPath( params.atlas.bundle_masks_dir + "/*.nii.gz", checkIfExists: true ).collect()
 
         // Prepare volume ROI metric extraction
         // Start by collecting DTI metrics
@@ -131,7 +128,7 @@ workflow NF_TRACTOFLOW {
         //
         // Input: [meta, [metrics_list], [masks]]
         ch_input_volume_roistats = TO_MNI.out.ch_registered_nifti_files
-            .combine(BUNDLE_IIT.out.bundle_masks.toList())
+            .combine(ch_iit_template_bundles_mask.toList())
             .map {
                 meta, metrics, masks ->
                     [meta, metrics, masks, []]

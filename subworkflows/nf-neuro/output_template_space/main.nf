@@ -51,7 +51,6 @@ workflow OUTPUT_TEMPLATE_SPACE {
         ch_t1w_tpl = UTILS_TEMPLATEFLOW.out.T1w
         ch_t2w_tpl = UTILS_TEMPLATEFLOW.out.T2w
         ch_brain_mask = UTILS_TEMPLATEFLOW.out.brain_mask
-        ch_t2w_tpl.view()
     } else {
         // ** If the template exists, we will not download it again. ** //
         log.info("Template ${params.template} found in " +
@@ -102,10 +101,7 @@ workflow OUTPUT_TEMPLATE_SPACE {
 
     MASK_T1W ( ch_bet_tpl_t1w )
     ch_versions = ch_versions.mix(MASK_T1W.out.versions)
-
-    // ** Strip the template from the meta field so we can combine it ** //
     ch_t1w_tpl_out = MASK_T1W.out.image
-        .map{ _meta, image -> image }
 
     ch_bet_tpl_t2w = ch_t2w_tpl
         .combine(ch_brain_mask.with_mask)
@@ -113,10 +109,7 @@ workflow OUTPUT_TEMPLATE_SPACE {
 
     MASK_T2W ( ch_bet_tpl_t2w )
     ch_versions = ch_versions.mix(MASK_T2W.out.versions)
-
-    // ** Strip the template from the meta field so we can combine it ** //
     ch_t2w_tpl_out = MASK_T2W.out.image
-        .map{ _meta, image -> image }
 
     // ** If the template does not have a brain mask ** //
     // ** The template may not have a brain mask, so we will ** //
@@ -128,25 +121,23 @@ workflow OUTPUT_TEMPLATE_SPACE {
 
     BET_T1W ( ch_bet_tpl_t1w )
     ch_versions = ch_versions.mix(BET_T1W.out.versions)
-    // ** Strip the template from the meta field so we can combine it ** //
-    ch_t1w_tpl_out = ch_t1w_tpl_out.mix(BET_T1W.out.image
-        .map{ _meta, image -> image })
+    ch_t1w_tpl_out = ch_t1w_tpl_out.mix(BET_T1W.out.image)
 
-    ch_t2w_tpl.view()
     ch_bet_tpl_t2w = ch_t2w_tpl
         .combine(ch_brain_mask.no_mask)
         .map{ t2w, _no_mask -> [ [id: "template"], t2w, [], [] ] }
 
-    ch_bet_tpl_t2w.view()
     BET_T2W ( ch_bet_tpl_t2w )
     ch_versions = ch_versions.mix(BET_T2W.out.versions)
+    ch_t2w_tpl_out = ch_t2w_tpl_out.mix(BET_T2W.out.image)
+
     // ** Strip the template from the meta field so we can combine it ** //
-    ch_t2w_tpl_out = ch_t2w_tpl_out.mix(BET_T2W.out.image
-        .map{ _meta, image -> image })
+    ch_t1w_tpl_out = ch_t1w_tpl_out.map{ _meta, image -> image }
+    ch_t2w_tpl_out = ch_t2w_tpl_out.map{ _meta, image -> image }
 
     ch_template = ch_anat
         .map{ meta, _anat -> meta }
-        .combine(params.use_template_t2w ? ch_t2w_tpl : ch_t1w_tpl)
+        .combine(params.use_template_t2w ? ch_t2w_tpl_out : ch_t1w_tpl_out)
 
     ch_brain_mask = ch_anat
         .map{ meta, _anat -> meta }
