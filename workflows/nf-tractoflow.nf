@@ -193,19 +193,27 @@ workflow NF_TRACTOFLOW {
         //
         // COLLECT/GROUP ROI STATS
         //
-        ch_collection_input = STATS_METRICSINROI.out.stats_tab
-            .map{ _meta, stats_tab -> stats_tab }
 
         // Collect all ROI stats into a single file
         // by appending each row of the TSV/CSV files,
         // while keeping the header from the first
         // file only and skipping it in the rest.
-        ch_collection_input.collectFile(
-            storeDir: "${params.outdir}/stats/",
-            name: "aggregated_atlas-iit_desc-roi_stats.tsv",
-            skip: 1,
-            keepHeader: true
-        )
+        ch_collection_mean_input = STATS_METRICSINROI.out.stats_mean
+            .map{ _meta, stats_tab -> stats_tab }
+            .collectFile(
+                storeDir: "${params.outdir}/stats/",
+                name: "aggregated_atlas-iit_label-mean_desc-roi_stats.tsv",
+                skip: 1,
+                keepHeader: true)
+
+        ch_collection_std_input = STATS_METRICSINROI.out.stats_std
+            .map{ _meta, stats_tab -> stats_tab }
+            .collectFile(
+                storeDir: "${params.outdir}/stats/",
+                name: "aggregated_atlas-iit_label-std_desc-roi_stats.tsv",
+                skip: 1,
+                keepHeader: true)
+
     }
 
     if ( params.run_tractometry ) {
