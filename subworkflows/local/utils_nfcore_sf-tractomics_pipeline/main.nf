@@ -86,6 +86,7 @@ workflow PIPELINE_INITIALISATION {
                 Channel.value(params.fsbids ?: []),
                 Channel.value(params.bidsignore ?: [])
             )
+
             ch_samplesheet = [
                 t1: IO_BIDS.out.ch_t1,
                 wmparc: IO_BIDS.out.ch_wmparc,
@@ -96,6 +97,47 @@ workflow PIPELINE_INITIALISATION {
                 rev_b0: IO_BIDS.out.ch_rev_b0,
                 lesion: Channel.empty()
             ]
+
+            // Parse "${params.inputs}/participants.tsv"
+            participants_path = Channel.fromPath("${params.input}/participants.tsv", checkIfExists: true)
+            participants_content = participants_path
+                .splitCsv(
+                    header: true,
+                    sep: '\t')
+
+            ch_main_content = ch_samplesheet.t1
+                .map {meta, content ->
+                    return [[id: meta.id, session: meta.session, run: meta.run], content]
+                }
+
+            ch_participants_meta = participants_content
+                .map { row ->
+                    def sid = row.remove('participant_id')
+                    def session = row.remove('session')
+                    def run = row.remove('run')
+
+                    return [[id: sid, session: session, run: run], row]
+                }
+
+            ch_other_meta = ch_samplesheet.t1
+                .map{ meta, _t1 ->
+                    def id = meta.remove('id')
+                    def session = meta.remove('session')
+                    def run = meta.remove('run')
+                    return [[id: id, session: session, run: run], meta]
+                }
+
+            test = ch_other_meta.join(ch_participants_meta).join(ch_main_content)
+
+            // joined = ch_other_meta
+                // .join(ch_participants_meta)
+                // .join(ch_main_content)
+                // .map { ids, other_meta, participant_meta, main_data ->
+                //     def merged_meta = ids + other_meta + participant_meta
+                //     return [merged_meta, main_data]
+                // }
+
+            // joined.view()
         }
         else {
             ch_input_sheets = Channel
