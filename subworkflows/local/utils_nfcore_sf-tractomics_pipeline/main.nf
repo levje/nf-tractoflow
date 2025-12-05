@@ -115,8 +115,8 @@ workflow PIPELINE_INITIALISATION {
                 .splitCsv(header: true, sep: '\t')
                 .map { row ->
                     def id = row.participant_id
-                    def ses = row.session ?: ""
-                    def run = row.run ?: ""
+                    def ses = row.session ? "ses-" + row.session: ""
+                    def run = row.run ? "run-" + row.run: ""
 
                     def key = [id: id, session: ses, run: run]
                     def content = default_content.clone()
