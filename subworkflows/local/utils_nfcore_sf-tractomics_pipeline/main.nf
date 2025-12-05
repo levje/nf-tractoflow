@@ -98,46 +98,67 @@ workflow PIPELINE_INITIALISATION {
                 lesion: Channel.empty()
             ]
 
+            // Define the schema for participants.tsv
+            def tsv_file = file("${params.input}/participants.tsv")
+            def all_tsv_headers = tsv_file.readLines()[0].split('\t')
+                .collect { item -> item.trim() }
+                .toList()
+
+            // Create joining keys
+            def primary_keys = ['participant_id', 'session', 'run']
+            def content_keys = all_tsv_headers - primary_keys
+            def default_content = content_keys.collectEntries { key -> [key, ""] }
+
             // Parse "${params.inputs}/participants.tsv"
-            participants_path = Channel.fromPath("${params.input}/participants.tsv", checkIfExists: true)
+            participants_path = channel.fromPath(tsv_file)
             participants_content = participants_path
-                .splitCsv(
-                    header: true,
-                    sep: '\t')
-
-            ch_main_content = ch_samplesheet.t1
-                .map {meta, content ->
-                    return [[id: meta.id, session: meta.session, run: meta.run], content]
-                }
-
-            ch_participants_meta = participants_content
+                .splitCsv(header: true, sep: '\t')
                 .map { row ->
-                    def sid = row.remove('participant_id')
-                    def session = row.remove('session')
-                    def run = row.remove('run')
+                    def id = row.participant_id
+                    def ses = row.session ?: ""
+                    def run = row.run ?: ""
 
-                    return [[id: sid, session: session, run: run], row]
+                    def key = [id: id, session: ses, run: run]
+                    def content = default_content.clone()
+                    content_keys.each { ckey -> content[ckey] = row[ckey] }
+                    content = content.collectEntries { k, v -> [k.toLowerCase(), v] }
+                    return [key, content]
                 }
 
-            ch_other_meta = ch_samplesheet.t1
-                .map{ meta, _t1 ->
-                    def id = meta.remove('id')
-                    def session = meta.remove('session')
-                    def run = meta.remove('run')
-                    return [[id: id, session: session, run: run], meta]
+            // Prepare keys
+            ch_original_meta = ch_samplesheet.t1
+                .map { meta, _content ->
+                    def key = [id: meta.id, session: meta.session ?: "", run: meta.run ?: ""]
+                    return [key, meta]
                 }
 
-            test = ch_other_meta.join(ch_participants_meta).join(ch_main_content)
+            // Join with participants.tsv content
+            ch_extra_meta = ch_original_meta
+                .join(participants_content, by: 0, remainder: true)
+                .filter { _key, original_meta, _tsv_meta -> original_meta != null } // Remove unmatched entries from the participants.tsv
+                .map { _key, original_meta, tsv_meta ->
+                    def extra_meta = tsv_meta ?: default_content.collectEntries { k, v -> [k.toLowerCase(), v] }
+                    return [original_meta, extra_meta]
+                }
 
-            // joined = ch_other_meta
-                // .join(ch_participants_meta)
-                // .join(ch_main_content)
-                // .map { ids, other_meta, participant_meta, main_data ->
-                //     def merged_meta = ids + other_meta + participant_meta
-                //     return [merged_meta, main_data]
-                // }
-
-            // joined.view()
+            // Merge extra metadata into all relevant channels
+            ch_samplesheet = ch_samplesheet.collectEntries { label, ch_src ->
+                def ch = ch_src.join(ch_extra_meta, by: 0)
+                    .map { item ->
+                        def original_meta = item[0]
+                        def content = item[1..-2]
+                        def tsv_meta = item[-1]
+                        // Merge original meta with tsv meta without overwriting existing fields
+                        def merged_meta = original_meta.clone()
+                        tsv_meta.each { k, v ->
+                            if (merged_meta[k] == null || merged_meta[k] == "") {
+                                merged_meta[k] = v
+                            }
+                        }
+                        return [merged_meta] + content
+                    }
+                [label, ch]
+            }
         }
         else {
             ch_input_sheets = Channel
