@@ -20,6 +20,7 @@ include { REGISTRATION_ANTS as REGISTER_ATLAS_B0 } from '../modules/nf-neuro/reg
 include { REGISTRATION_ANTSAPPLYTRANSFORMS as TRANSFORM_ATLAS_BUNDLES } from '../modules/nf-neuro/registration/antsapplytransforms/main.nf'
 include { STATS_METRICSINROI     } from '../modules/nf-neuro/stats/metricsinroi/main'
 include { TRACTOMETRY } from '../subworkflows/nf-neuro/tractometry/main'
+include { mergeCovariatesIntoMeta } from '../subworkflows/local/utils_nfcore_sf-tractomics_pipeline/main'
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     RUN MAIN WORKFLOW
@@ -36,6 +37,7 @@ workflow SF_TRACTOMICS {
     ch_rev_dwi_bval_bvec
     ch_rev_b0
     ch_lesion
+    ch_covariates
     main:
 
     ch_versions = Channel.empty()
