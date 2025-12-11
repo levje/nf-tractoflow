@@ -19,9 +19,9 @@ include { BUNDLE_SEG             } from '../subworkflows/nf-neuro/bundle_seg/mai
 include { REGISTRATION_ANTS as REGISTER_ATLAS_B0 } from '../modules/nf-neuro/registration/ants/main'
 include { REGISTRATION_ANTSAPPLYTRANSFORMS as TRANSFORM_ATLAS_BUNDLES } from '../modules/nf-neuro/registration/antsapplytransforms/main.nf'
 include { STATS_METRICSINROI     } from '../modules/nf-neuro/stats/metricsinroi/main'
-include { mergeCovariatesIntoMeta } from '../subworkflows/local/utils_nfcore_sf-tractomics_pipeline/main'
 include { ATLAS_ROIMETRICS       } from '../subworkflows/nf-neuro/atlas_roimetrics/main'
 include { TRACTOMETRY            } from '../subworkflows/nf-neuro/tractometry/main'
+include { mergeCovariatesIntoMeta } from '../subworkflows/local/utils_nfcore_sf-tractomics_pipeline/main'
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     RUN MAIN WORKFLOW
@@ -198,8 +198,8 @@ workflow SF_TRACTOMICS {
 
     if (params.run_atlas_roimetrics) {
         ATLAS_ROIMETRICS(
-            TRACTOFLOW.out.b0,
-            ch_input_metrics,
+            mergeCovariatesIntoMeta(TRACTOFLOW.out.b0),
+            mergeCovariatesIntoMeta(ch_input_metrics),
             [ use_atlas_iit: params.use_atlas_iit ]
         )
         ch_versions = ch_versions.mix(ATLAS_ROIMETRICS.out.versions)
@@ -228,11 +228,11 @@ workflow SF_TRACTOMICS {
 
     if ( params.run_tractometry ) {
         TRACTOMETRY(
-            ch_bundle_seg,
+            mergeCovariatesIntoMeta(ch_bundle_seg),
             Channel.empty(),
-            ch_input_metrics,
+            mergeCovariatesIntoMeta(ch_input_metrics),
             Channel.empty(),
-            TRACTOFLOW.out.fodf)
+            mergeCovariatesIntoMeta(TRACTOFLOW.out.fodf))
         ch_versions = ch_versions.mix(TRACTOMETRY.out.versions)
 
         ch_tractometry_mqc = TRACTOMETRY.out.mean_tsv
