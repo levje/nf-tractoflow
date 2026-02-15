@@ -1,7 +1,7 @@
 process IO_READBIDS {
     label 'process_single'
 
-    container "scilus/scilpy:2.2.1_cpu"
+    container "mrzarfir/scilpy:2.2.2_cpu"
 
     input:
         path(bids_folder)
